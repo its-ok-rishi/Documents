@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RAG Interactive Visualizer & Simulator</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            surface: {
+              800: '#1e2230',
+              850: '#171b26',
+              900: '#0f131c',
+              950: '#090b10',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Google Fonts Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <style>
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f131c; }
+    ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #4a5568; }
+
+    .glow-indigo {
+      box-shadow: 0 0 25px -5px rgba(99, 102, 241, 0.35);
+    }
+    .glow-emerald {
+      box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.35);
+    }
+    .glow-cyan {
+      box-shadow: 0 0 25px -5px rgba(6, 182, 212, 0.35);
+    }
+
+    /* Pulse animation for active step */
+    @keyframes stepPulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.06); opacity: 0.85; }
+    }
+    .step-active-pulse {
+      animation: stepPulse 2.4s infinite ease-in-out;
+    }
+
+    /* Dot grid background */
+    .bg-tech-grid {
+      background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+  </style>
+</head>
+<body class="bg-surface-950 text-slate-100 font-sans min-h-screen flex flex-col bg-tech-grid antialiased selection:bg-brand-500 selection:text-white">
+
+  <header class="border-b border-slate-800/80 bg-surface-900/80 backdrop-blur-md sticky top-0 z-40 px-4 lg:px-8 py-3.5">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 via-indigo-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-brand-500/20">
+          <i data-lucide="cpu" class="w-5 h-5 text-white"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-bold tracking-tight text-white">RAG Explorer & Visualizer</h1>
+            <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Interactive v2.5</span>
+          </div>
+          <p class="text-xs text-slate-400">Deep-dive into Retrieval-Augmented Generation mechanics & vector space</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button id="btn-run-all" class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white rounded-lg text-sm font-medium transition-all shadow-md shadow-brand-600/30 active:scale-95">
+          <i data-lucide="play" class="w-4 h-4 fill-current"></i>
+          <span>Run Full Pipeline</span>
+        </button>
+        <button id="btn-step-next" class="flex items-center gap-2 px-3.5 py-2 bg-surface-800 hover:bg-surface-850 text-slate-200 border border-slate-700/70 rounded-lg text-sm font-medium transition-all active:scale-95">
+          <i data-lucide="step-forward" class="w-4 h-4"></i>
+          <span>Next Step</span>
+        </button>
+        <button id="btn-reset" title="Reset all pipeline state" class="p-2 bg-surface-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700/70 rounded-lg text-sm transition-all">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <section class="max-w-7xl mx-auto px-4 lg:px-8 pt-6 pb-2 w-full">
+    <div class="bg-surface-900/60 border border-slate-800/90 rounded-2xl p-4 shadow-xl backdrop-blur-sm">
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 relative">
+        <!-- Step 1 -->
+        <button class="step-btn group text-left p-3 rounded-xl border transition-all duration-200 relative overflow-hidden active-step bg-brand-500/10 border-brand-500/40" data-step="1">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[10px] font-mono tracking-wider text-brand-400 font-semibold uppercase">Step 01</span>
+            <span class="w-2 h-2 rounded-full bg-brand-400 step-dot"></span>
+          </div>
+          <div class="font-semibold text-sm text-white flex items-center gap-1.5">
+            <i data-lucide="scissors" class="w-4 h-4 text-brand-400"></i> Chunking
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1 truncate">Document ingestion & tokens</p>
+        </button>
+
+        <!-- Step 2 -->
+        <button class="step-btn group text-left p-3 rounded-xl border border-slate-800 bg-surface-850/50 hover:border-slate-700 transition-all duration-200" data-step="2">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[10px] font-mono tracking-wider text-slate-400 font-semibold uppercase">Step 02</span>
+            <span class="w-2 h-2 rounded-full bg-slate-600 step-dot"></span>
+          </div>
+          <div class="font-semibold text-sm text-slate-200 flex items-center gap-1.5">
+            <i data-lucide="binary" class="w-4 h-4 text-indigo-400"></i> Embeddings
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1 truncate">Dense vectors & DB indexing</p>
+        </button>
+
+        <!-- Step 3 -->
+        <button class="step-btn group text-left p-3 rounded-xl border border-slate-800 bg-surface-850/50 hover:border-slate-700 transition-all duration-200" data-step="3">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[10px] font-mono tracking-wider text-slate-400 font-semibold uppercase">Step 03</span>
+            <span class="w-2 h-2 rounded-full bg-slate-600 step-dot"></span>
+          </div>
+          <div class="font-semibold text-sm text-slate-200 flex items-center gap-1.5">
+            <i data-lucide="radar" class="w-4 h-4 text-cyan-400"></i> Retrieval
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1 truncate">Cosine similarity & Top-K</p>
+        </button>
+
+        <!-- Step 4 -->
+        <button class="step-btn group text-left p-3 rounded-xl border border-slate-800 bg-surface-850/50 hover:border-slate-700 transition-all duration-200" data-step="4">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[10px] font-mono tracking-wider text-slate-400 font-semibold uppercase">Step 04</span>
+            <span class="w-2 h-2 rounded-full bg-slate-600 step-dot"></span>
+          </div>
+          <div class="font-semibold text-sm text-slate-200 flex items-center gap-1.5">
+            <i data-lucide="layers" class="w-4 h-4 text-amber-400"></i> Augmentation
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1 truncate">Prompt assembly & budget</p>
+        </button>
+
+        <!-- Step 5 -->
+        <button class="step-btn group text-left p-3 rounded-xl border border-slate-800 bg-surface-850/50 hover:border-slate-700 transition-all duration-200 col-span-2 md:col-span-1" data-step="5">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[10px] font-mono tracking-wider text-slate-400 font-semibold uppercase">Step 05</span>
+            <span class="w-2 h-2 rounded-full bg-slate-600 step-dot"></span>
+          </div>
+          <div class="font-semibold text-sm text-slate-200 flex items-center gap-1.5">
+            <i data-lucide="sparkles" class="w-4 h-4 text-emerald-400"></i> Generation
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1 truncate">Grounded answer & citations</p>
+        </button>
+      </div>
+
+      <!-- Live status bar -->
+      <div class="mt-3.5 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between text-xs text-slate-400 gap-2">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
+          <span>Pipeline Status: <strong id="status-label" class="text-white font-medium">Ready at Step 1 (Ingestion & Chunking)</strong></span>
+        </div>
+        <div class="flex items-center gap-4 text-[11px]">
+          <span id="stat-chunks-count">Chunks: <strong class="text-brand-400">0</strong></span>
+          <span id="stat-topk-count">Top-K Matches: <strong class="text-cyan-400">0</strong></span>
+          <span id="stat-tokens-count">Prompt Tokens: <strong class="text-amber-400">~0</strong></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main class="max-w-7xl mx-auto px-4 lg:px-8 py-6 w-full flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- LEFT COLUMN: Stage Control & Vector Space (7 cols) -->
+    <div class="lg:col-span-7 flex flex-col gap-6">
+
+      <!-- STAGE 1 & 2: Ingestion, Chunking, Embeddings -->
+      <div class="bg-surface-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg relative">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-4">
+          <div class="flex items-center gap-2.5">
+            <div class="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
+              <i data-lucide="file-text" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h2 class="text-base font-semibold text-white">1. Document Ingestion & Chunking</h2>
+              <p class="text-xs text-slate-400">Select preset document or paste your own enterprise data</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 text-xs">
+            <span class="text-slate-400">Preset:</span>
+            <select id="preset-selector" class="bg-surface-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+              <option value="hr">🏢 Acme Corp Remote Work Policy</option>
+              <option value="space">🚀 Kepler & James Webb Exoplanets</option>
+              <option value="medical">🩺 Type 2 Diabetes Guidelines</option>
+              <option value="custom">✏️ Custom Document...</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Raw Text Document Area -->
+        <div class="mb-4">
+          <label class="block text-xs font-medium text-slate-300 mb-1.5">Corpus Source Content</label>
+          <textarea id="raw-document-input" rows="4" class="w-full bg-surface-950/70 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 font-mono focus:border-brand-500 focus:outline-none transition-colors" placeholder="Type or paste document..."></textarea>
+        </div>
+
+        <!-- Chunking Strategy Controls -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-surface-850/60 rounded-xl border border-slate-800 mb-4">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-300">Chunk Size</span>
+              <span id="chunk-size-val" class="font-mono text-brand-400">35 words</span>
+            </div>
+            <input id="chunk-size-slider" type="range" min="15" max="75" value="35" class="w-full accent-brand-500 h-1.5 bg-slate-700 rounded-lg cursor-pointer">
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-300">Overlap</span>
+              <span id="overlap-val" class="font-mono text-brand-400">8 words</span>
+            </div>
+            <input id="overlap-slider" type="range" min="0" max="20" value="8" class="w-full accent-brand-500 h-1.5 bg-slate-700 rounded-lg cursor-pointer">
+          </div>
+          <div>
+            <span class="block text-xs text-slate-300 mb-1">Strategy</span>
+            <select id="chunk-strategy" class="w-full bg-surface-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1 focus:ring-1 focus:ring-brand-500 outline-none">
+              <option value="sentence">Sentence-Aware (Smart)</option>
+              <option value="fixed">Fixed Word Window</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Visual Chunks Viewer -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="layout-grid" class="w-3.5 h-3.5 text-brand-400"></i>
+              Extracted Chunks & Tokens (<span id="chunk-count-badge" class="text-brand-400">0</span>)
+            </span>
+            <span class="text-[11px] text-slate-500">Click a chunk to preview raw embedding vector</span>
+          </div>
+          <div id="chunks-container" class="max-h-48 overflow-y-auto space-y-2 pr-1">
+            <!-- Chunks rendered by JS -->
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-surface-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3">
+          <div class="flex items-center gap-2.5">
+            <div class="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
+              <i data-lucide="network" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h2 class="text-base font-semibold text-white">2 & 3. 2D Vector Embedding Space & Search</h2>
+              <p class="text-xs text-slate-400">Chunks indexed in high-dimensional vector DB, reduced via 2D projection</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 text-xs">
+            <span class="inline-flex items-center gap-1 text-[11px] text-slate-400">
+              <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span> Chunks
+            </span>
+            <span class="inline-flex items-center gap-1 text-[11px] text-slate-400">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Query
+            </span>
+            <span class="inline-flex items-center gap-1 text-[11px] text-slate-400">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> Top-K
+            </span>
+          </div>
+        </div>
+
+        <!-- Interactive Vector Space Canvas -->
+        <div class="relative w-full h-72 bg-surface-950 border border-slate-800/90 rounded-xl overflow-hidden shadow-inner flex items-center justify-center">
+          <canvas id="vector-canvas" class="w-full h-full block cursor-crosshair"></canvas>
+          <div id="canvas-hint" class="absolute bottom-2 left-2 text-[10px] font-mono text-slate-500 bg-surface-900/80 px-2 py-0.5 rounded border border-slate-800">
+            Axes: Dimension 1 vs Dimension 2 | Click on nodes to view vector data
+          </div>
+          <div id="vector-tooltip" class="absolute hidden pointer-events-none z-20 bg-surface-850/95 border border-slate-700 text-xs rounded-lg p-2.5 shadow-xl max-w-xs backdrop-blur-md">
+            <!-- Tooltip dynamic content -->
+          </div>
+        </div>
+
+        <!-- Similarity Search Controls & Formula -->
+        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="p-3 bg-surface-850/60 rounded-xl border border-slate-800 text-xs">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-slate-300 font-medium">Top-K Nearest Neighbors</span>
+              <span id="top-k-label" class="font-mono text-emerald-400 font-bold">K = 2</span>
+            </div>
+            <input id="top-k-slider" type="range" min="1" max="4" value="2" class="w-full accent-emerald-500 h-1.5 bg-slate-700 rounded-lg cursor-pointer">
+            
+            <div class="flex items-center justify-between mt-3 mb-1">
+              <span class="text-slate-300 font-medium">Cosine Threshold Filter</span>
+              <span id="threshold-label" class="font-mono text-cyan-400 font-bold">≥ 0.60</span>
+            </div>
+            <input id="threshold-slider" type="range" min="0" max="0.95" step="0.05" value="0.60" class="w-full accent-cyan-500 h-1.5 bg-slate-700 rounded-lg cursor-pointer">
+          </div>
+
+          <div class="p-3 bg-surface-850/60 rounded-xl border border-slate-800 text-xs flex flex-col justify-between">
+            <div class="flex items-center justify-between text-slate-300 font-medium mb-1">
+              <span>Similarity Metric Formula</span>
+              <span class="text-[10px] text-brand-400 font-mono">text-embedding-3-small</span>
+            </div>
+            <div class="p-2 bg-surface-950 rounded-lg font-mono text-[11px] text-cyan-300 text-center border border-slate-800/80">
+              Cosine Similarity: cos(θ) = (A · B) / (||A|| · ||B||)
+            </div>
+            <p class="text-[11px] text-slate-400 mt-1">
+              Calculates the angle cosine between the dense query embedding and stored document vectors in N-dimensional hyperspace.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="lg:col-span-5 flex flex-col gap-6">
+
+      <!-- Query Submission Box -->
+      <div class="bg-surface-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3">
+          <div class="flex items-center gap-2.5">
+            <div class="p-2 rounded-lg bg-rose-500/10 text-rose-400">
+              <i data-lucide="search" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h2 class="text-base font-semibold text-white">User Prompt / Query</h2>
+              <p class="text-xs text-slate-400">Ask a question to test retrieval accuracy</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-2.5">
+          <div class="relative">
+            <input id="user-query-input" type="text" value="How much can I expense for home office internet per month?" class="w-full bg-surface-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-brand-500 focus:outline-none transition-all pr-24" placeholder="Enter question...">
+            <button id="btn-submit-query" class="absolute right-1.5 top-1.5 px-3 py-1 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-xs font-semibold transition-all">
+              Embed & Query
+            </button>
+          </div>
+
+          <!-- Suggested queries based on preset -->
+          <div class="flex flex-wrap gap-1.5 pt-1" id="query-chips">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- STAGE 4: Augmented Prompt Composer -->
+      <div class="bg-surface-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3">
+          <div class="flex items-center gap-2.5">
+            <div class="p-2 rounded-lg bg-amber-500/10 text-amber-400">
+              <i data-lucide="file-code" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h2 class="text-base font-semibold text-white">4. Augmented Prompt Engineering</h2>
+              <p class="text-xs text-slate-400">System prompt + retrieved context injection</p>
+            </div>
+          </div>
+          <button id="btn-copy-prompt" class="p-1.5 text-slate-400 hover:text-white rounded-lg bg-surface-800 hover:bg-surface-700 transition" title="Copy exact formatted prompt">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+
+        <div class="p-3 bg-surface-950 border border-slate-800 rounded-xl font-mono text-[11px] leading-relaxed max-h-52 overflow-y-auto space-y-2">
+          <div class="text-slate-500">
+            <span class="text-amber-400 font-semibold">[SYSTEM INSTRUCTION]</span><br>
+            You are a helpful enterprise assistant. Answer the user prompt ONLY using the provided retrieved context. If unsure, declare you cannot find it.
+          </div>
+          <div class="border-t border-slate-800/80 pt-2">
+            <span class="text-cyan-400 font-semibold">[RETRIEVED CONTEXT]</span>
+            <div id="prompt-context-container" class="text-slate-300 mt-1 space-y-1.5">
+              <em class="text-slate-500">Run query to inject top-K retrieved context blocks...</em>
+            </div>
+          </div>
+          <div class="border-t border-slate-800/80 pt-2">
+            <span class="text-rose-400 font-semibold">[USER QUESTION]</span><br>
+            <span id="prompt-user-question" class="text-slate-200">How much can I expense for home office internet per month?</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- STAGE 5: Generation Comparison (RAG Grounded vs Non-RAG Hallucination) -->
+      <div class="bg-surface-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col flex-1">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3">
+          <div class="flex items-center gap-2.5">
+            <div class="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+              <i data-lucide="bot" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h2 class="text-base font-semibold text-white">5. LLM Synthesis & Grounded Citations</h2>
+              <p class="text-xs text-slate-400">Live comparison: Vanilla LLM vs Grounded RAG</p>
+            </div>
+          </div>
+          <div class="flex items-center bg-surface-950 p-0.5 rounded-lg border border-slate-800 text-xs">
+            <button id="tab-with-rag" class="px-2.5 py-1 rounded-md bg-emerald-600 text-white font-medium transition">With RAG</button>
+            <button id="tab-without-rag" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition">Without RAG</button>
+          </div>
+        </div>
+
+        <!-- Output display container -->
+        <div class="flex-1 flex flex-col justify-between">
+          <div id="llm-output-box" class="p-4 bg-surface-950 border border-slate-800 rounded-xl text-xs sm:text-sm leading-relaxed text-slate-200 min-h-[140px]">
+            <div class="flex items-center gap-2 text-slate-500 mb-2">
+              <i data-lucide="terminal" class="w-4 h-4"></i>
+              <span>Generated response will stream here...</span>
+            </div>
+          </div>
+
+          <!-- Citation details & Grounding meter -->
+          <div class="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
+            <div class="flex items-center gap-2">
+              <span class="text-slate-400">Fact Grounding:</span>
+              <div class="w-24 bg-surface-800 h-2 rounded-full overflow-hidden">
+                <div id="grounding-meter" class="h-full bg-emerald-500 transition-all duration-500 w-0"></div>
+              </div>
+              <span id="grounding-pct" class="font-mono text-emerald-400 font-semibold">0%</span>
+            </div>
+            <div id="citation-tags" class="flex items-center gap-1.5">
+              <!-- Interactive citations inserted here -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <section class="max-w-7xl mx-auto px-4 lg:px-8 pb-12 w-full">
+    <div class="border border-slate-800/80 bg-surface-900/60 rounded-2xl overflow-hidden">
+      <button id="btn-toggle-guide" class="w-full p-4 text-left flex items-center justify-between hover:bg-surface-850/40 transition">
+        <div class="flex items-center gap-3">
+          <div class="p-2 rounded-lg bg-purple-500/10 text-purple-400">
+            <i data-lucide="book-open" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <span class="text-sm font-semibold text-white block">Enterprise Architecture Reference: How RAG Operates in Production</span>
+            <span class="text-xs text-slate-400">Comparing chunking algorithms, ANN vector indices (HNSW, IVFFlat), and cross-encoder rerankers</span>
+          </div>
+        </div>
+        <i id="guide-chevron" data-lucide="chevron-down" class="w-5 h-5 text-slate-400 transition-transform"></i>
+      </button>
+
+      <div id="guide-content" class="hidden p-5 border-t border-slate-800/80 bg-surface-950/70 grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-slate-300">
+        <div class="space-y-2 p-3 bg-surface-900/80 rounded-xl border border-slate-800">
+          <h3 class="font-semibold text-brand-400 flex items-center gap-1.5">
+            <i data-lucide="database" class="w-3.5 h-3.5"></i> 1. Vector Databases & Indexing
+          </h3>
+          <p class="text-slate-400 leading-normal">
+            Production vector engines (Pinecone, ChromaDB, Qdrant, Weaviate, pgvector) don't run brute-force O(N) cosine checks on millions of vectors. They construct <strong>Approximate Nearest Neighbor (ANN)</strong> graphs such as <strong>HNSW</strong> (Hierarchical Navigable Small World) to achieve sub-10ms search latency.
+          </p>
+          <ul class="list-disc list-inside text-slate-400 space-y-1">
+            <li><strong>HNSW:</strong> Ultra-fast search, higher RAM usage.</li>
+            <li><strong>IVFFlat:</strong> Inverted file clusters, low memory footprint.</li>
+          </ul>
+        </div>
+
+        <div class="space-y-2 p-3 bg-surface-900/80 rounded-xl border border-slate-800">
+          <h3 class="font-semibold text-cyan-400 flex items-center gap-1.5">
+            <i data-lucide="split" class="w-3.5 h-3.5"></i> 2. Advanced Retrieval & Re-ranking
+          </h3>
+          <p class="text-slate-400 leading-normal">
+            Naive vector search can miss keywords or retrieve semantically similar but legally irrelevant text. Modern production RAG employs <strong>Hybrid Search</strong> (Dense embeddings + Sparse BM25) followed by a <strong>Cross-Encoder Re-ranker</strong> (like Cohere Rerank or BGE-Reranker-Large) to re-score candidates.
+          </p>
+          <ul class="list-disc list-inside text-slate-400 space-y-1">
+            <li><strong>Sparse (BM25):</strong> Catches exact IDs, SKUs, and proper nouns.</li>
+            <li><strong>Cross-Encoder:</strong> Evaluates Query + Chunk jointly.</li>
+          </ul>
+        </div>
+
+        <div class="space-y-2 p-3 bg-surface-900/80 rounded-xl border border-slate-800">
+          <h3 class="font-semibold text-emerald-400 flex items-center gap-1.5">
+            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> 3. Mitigating LLM Hallucinations
+          </h3>
+          <p class="text-slate-400 leading-normal">
+            LLMs generate confident falsehoods when missing domain context. RAG transforms the model from a generative guesser into a <strong>grounded reader-evaluator</strong>. Strict system prompting instructs the model to refuse answering if the retrieved chunk threshold is not met.
+          </p>
+          <ul class="list-disc list-inside text-slate-400 space-y-1">
+            <li><strong>Faithfulness Evaluation:</strong> TruLens, Ragas metrics.</li>
+            <li><strong>Lost-in-the-Middle:</strong> Prioritizing chunks at ends of prompt.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none bg-surface-850 border border-slate-700 text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5">
+    <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
+    <span id="toast-msg">Action completed</span>
+  </div>
+
+  <script>
+    /* PRESETS DATABASE */
+    const PRESETS = {
+      hr: {
+        title: "Acme Corp Remote Work Policy",
+        text: `Acme Corp Remote Work Policy 2026. Employees are eligible to work remotely up to 3 days per week with manager approval. The company provides a monthly internet stipend of $75 reimbursable via Expensify under Code NET-2026. For home office equipment, employees have a one-time ergonomic budget of $600 to purchase monitors, chairs, or standing desks. Core collaboration hours where all team members must be reachable on Slack are 10:00 AM to 3:00 PM Eastern Time. Annual leave must be requested at least 14 business days in advance for vacations exceeding one consecutive week. Health wellness benefits include an annual $400 gym membership or fitness subscription allowance.`,
+        queries: [
+          "How much can I expense for home office internet per month?",
+          "What are the mandatory core collaboration hours?",
+          "What is the budget for ergonomic home office furniture?",
+          "What is the policy for vacation leave exceeding one week?"
+        ]
+      },
+      space: {
+        title: "Kepler & James Webb Exoplanets",
+        text: `Astronomical discoveries by NASA's Kepler Space Telescope and the James Webb Space Telescope (JWST). Kepler detected thousands of exoplanets using the transit method, observing tiny dips in stellar luminosity when planets cross the star's face. Kepler-452b, located roughly 1,400 light-years away in the constellation Cygnus, orbits inside the conservative habitable zone of a G2-type sun-like star with an orbital period of 385 Earth days. JWST has used its Near-Infrared Spectrograph (NIRSpec) to analyze the atmosphere of WASP-96b, uncovering clear spectral signatures of water vapor, haze, and clouds previously hidden. The TRAPPIST-1 system hosts seven Earth-sized terrestrial planets orbiting an ultracool red dwarf star 40 light-years distant.`,
+        queries: [
+          "What is the orbital period of Kepler-452b?",
+          "How did Kepler detect transiting exoplanets?",
+          "What did JWST NIRSpec discover on WASP-96b?",
+          "How far away is the TRAPPIST-1 planetary system?"
+        ]
+      },
+      medical: {
+        title: "Type 2 Diabetes Guidelines",
+        text: `Clinical practice guidelines for Type 2 Diabetes management. First-line pharmacologic therapy remains Metformin, titrated slowly to 2,000 mg daily with meals to minimize gastrointestinal discomfort, alongside lifestyle diet modifications. The target Glycated Hemoglobin (HbA1c) for non-pregnant adults is generally below 7.0% (53 mmol/mol) to reduce microvascular complications. Continuous Glucose Monitoring (CGM) is indicated for patients requiring intensive insulin therapy or experiencing frequent nocturnal hypoglycemia. SGLT2 inhibitors (such as Empagliflozin) or GLP-1 receptor agonists are strongly recommended for patients with established atherosclerotic cardiovascular disease or chronic kidney disease.`,
+        queries: [
+          "What is the recommended target HbA1c for non-pregnant adults?",
+          "What is the standard first-line medication and target dosage?",
+          "When are SGLT2 inhibitors or GLP-1 agonists recommended?",
+          "What is the clinical role of Continuous Glucose Monitoring (CGM)?"
+        ]
+      },
+      custom: {
+        title: "Custom Document",
+        text: `Vector databases index embeddings using high-dimensional Euclidean space. When a query is converted into an embedding using a neural network, cosine distance determines the semantic relevance between chunks and the user prompt.`,
+        queries: [
+          "How do vector databases measure semantic similarity?"
+        ]
+      }
+    };
+
+    /* APPLICATION STATE */
+    const state = {
+      currentStep: 1,
+      presetKey: 'hr',
+      rawText: '',
+      chunkSize: 35,
+      overlap: 8,
+      strategy: 'sentence',
+      topK: 2,
+      threshold: 0.60,
+      userQuery: '',
+      chunks: [], // { id, text, tokens, vector: [x, y, z...], coords2D: {x, y}, similarity: 0, matched: false }
+      queryVector: null, // { vector: [], coords2D: {x, y} }
+      retrievedChunks: [],
+      isGenerating: false,
+      activeViewMode: 'with-rag', // 'with-rag' | 'without-rag'
+      animationFrameId: null,
+      radarAngle: 0
+    };
+
+    const canvas = document.getElementById('vector-canvas');
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      renderCanvas();
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    // Vector Dot Product & Cosine Similarity
+    function cosineSimilarity(vecA, vecB) {
+      let dotProduct = 0;
+      let normA = 0;
+      let normB = 0;
+      for (let i = 0; i < vecA.length; i++) {
+        dotProduct += vecA[i] * vecB[i];
+        normA += vecA[i] * vecA[i];
+        normB += vecB[i] * vecB[i];
+      }
+      if (normA === 0 || normB === 0) return 0;
+      return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
+
+    // Deterministic mock high-dimensional embedding generation from text string
+    function generatePseudoEmbedding(text, dimensions = 8) {
+      const vector = [];
+      const clean = text.toLowerCase();
+      for (let d = 0; d < dimensions; d++) {
+        let sum = 0;
+        for (let i = 0; i < clean.length; i++) {
+          const charCode = clean.charCodeAt(i);
+          sum += Math.sin((i + 1) * (d + 1) * 0.35 + charCode);
+        }
+        // Normalize roughly between -1 and 1
+        const val = Math.sin(sum);
+        vector.push(parseFloat(val.toFixed(3)));
+      }
+      return vector;
+    }
+
+    // Map high-dimensional vector to 2D projection coordinates for HTML5 Canvas
+    function projectTo2D(vector, canvasWidth, canvasHeight, seedOffset = 0) {
+      // Use dimensions 0 and 1 with small harmonic contributions for stable dispersion
+      const xNorm = (vector[0] * 0.7 + (vector[2] || 0) * 0.3);
+      const yNorm = (vector[1] * 0.7 + (vector[3] || 0) * 0.3);
+      
+      const padding = 45;
+      const x = padding + ((xNorm + 1) / 2) * (canvasWidth - padding * 2);
+      const y = padding + ((yNorm + 1) / 2) * (canvasHeight - padding * 2);
+      return { x: Math.max(padding, Math.min(canvasWidth - padding, x)), y: Math.max(padding, Math.min(canvasHeight - padding, y)) };
+    }
+
+    function performChunking() {
+      const text = state.rawText.trim();
+      if (!text) {
+        state.chunks = [];
+        updateChunksUI();
+        return;
+      }
+
+      const words = text.split(/\s+/);
+      const chunks = [];
+      const chunkSize = parseInt(state.chunkSize, 10);
+      const overlap = parseInt(state.overlap, 10);
+
+      if (state.strategy === 'fixed') {
+        let i = 0;
+        let chunkIndex = 1;
+        while (i < words.length) {
+          const chunkWords = words.slice(i, i + chunkSize);
+          const chunkText = chunkWords.join(' ');
+          if (chunkText.trim().length > 0) {
+            chunks.push(buildChunkObject(chunkIndex++, chunkText));
+          }
+          i += Math.max(1, chunkSize - overlap);
+          if (i >= words.length && chunks.length > 0) break;
+        }
+      } else {
+        // Sentence-aware grouping
+        const sentences = text.match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g) || [text];
+        let currentWords = [];
+        let chunkIndex = 1;
+
+        for (let s = 0; s < sentences.length; s++) {
+          const sentWords = sentences[s].trim().split(/\s+/);
+          if (currentWords.length + sentWords.length <= chunkSize || currentWords.length === 0) {
+            currentWords.push(...sentWords);
+          } else {
+            chunks.push(buildChunkObject(chunkIndex++, currentWords.join(' ')));
+            // Retain overlap tail
+            const overlapSlice = currentWords.slice(Math.max(0, currentWords.length - overlap));
+            currentWords = [...overlapSlice, ...sentWords];
+          }
+        }
+        if (currentWords.length > 0) {
+          chunks.push(buildChunkObject(chunkIndex++, currentWords.join(' ')));
+        }
+      }
+
+      state.chunks = chunks;
+      updateChunksUI();
+      renderCanvas();
+    }
+
+    function buildChunkObject(id, chunkText) {
+      const vector = generatePseudoEmbedding(chunkText, 8);
+      const rect = canvas.getBoundingClientRect();
+      const coords2D = projectTo2D(vector, rect.width || 500, rect.height || 288, id);
+      const tokenCount = Math.round(chunkText.split(/\s+/).length * 1.33); // standard GPT token rule of thumb
+
+      return {
+        id: `chunk_${id}`,
+        numericId: id,
+        text: chunkText,
+        tokens: tokenCount,
+        vector: vector,
+        coords2D: coords2D,
+        similarity: 0,
+        matched: false
+      };
+    }
+
+    function updateChunksUI() {
+      const container = document.getElementById('chunks-container');
+      const badge = document.getElementById('chunk-count-badge');
+      const statChunks = document.getElementById('stat-chunks-count');
+      
+      badge.textContent = state.chunks.length;
+      statChunks.innerHTML = `Chunks: <strong class="text-brand-400">${state.chunks.length}</strong>`;
+
+      if (state.chunks.length === 0) {
+        container.innerHTML = `<div class="text-xs text-slate-500 py-3 text-center">No chunks available. Input text above.</div>`;
+        return;
+      }
+
+      container.innerHTML = state.chunks.map((chunk) => {
+        const isMatched = chunk.matched;
+        const borderClass = isMatched 
+          ? 'border-emerald-500/80 bg-emerald-950/20 shadow-sm shadow-emerald-500/20' 
+          : 'border-slate-800 bg-surface-950/60 hover:border-slate-700';
+        
+        return `
+          <div class="chunk-card p-2.5 rounded-xl border ${borderClass} transition-all cursor-pointer group" data-chunk-id="${chunk.id}">
+            <div class="flex items-center justify-between text-[11px] mb-1">
+              <div class="flex items-center gap-1.5">
+                <span class="px-1.5 py-0.5 rounded font-mono font-bold ${isMatched ? 'bg-emerald-500 text-slate-950' : 'bg-surface-800 text-slate-300'}">
+                  #${chunk.numericId}
+                </span>
+                <span class="text-slate-400 font-mono text-[10px]">~${chunk.tokens} tokens</span>
+              </div>
+              <div class="flex items-center gap-1">
+                ${chunk.similarity > 0 ? `
+                  <span class="text-[10px] font-mono font-semibold px-1.5 py-0.2 rounded ${isMatched ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'}">
+                    cos: ${(chunk.similarity * 100).toFixed(1)}%
+                  </span>
+                ` : ''}
+              </div>
+            </div>
+            <p class="text-xs text-slate-300 line-clamp-2 leading-relaxed group-hover:text-white transition-colors">
+              "${chunk.text}"
+            </p>
+            <div class="mt-1.5 pt-1 border-t border-slate-800/60 flex items-center justify-between text-[10px] font-mono text-slate-500">
+              <span class="truncate max-w-[240px]">Vec: [${chunk.vector.slice(0, 4).join(', ')}...]</span>
+              <span class="text-brand-400 opacity-0 group-hover:opacity-100 transition-opacity">Inspect vector</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Add click listeners to chunk cards
+      container.querySelectorAll('.chunk-card').forEach(card => {
+        card.addEventListener('click', () => {
+          const chunkId = card.getAttribute('data-chunk-id');
+          const target = state.chunks.find(c => c.id === chunkId);
+          if (target) {
+            showToast(`Chunk #${target.numericId} Embedding: [${target.vector.join(', ')}]`);
+            highlightCanvasNode(target);
+          }
+        });
+      });
+    }
+
+    function performRetrieval() {
+      const query = state.userQuery.trim();
+      if (!query || state.chunks.length === 0) return;
+
+      // Compute query embedding vector
+      const queryVec = generatePseudoEmbedding(query, 8);
+      const rect = canvas.getBoundingClientRect();
+      const queryCoords = projectTo2D(queryVec, rect.width || 500, rect.height || 288, 999);
+      
+      state.queryVector = {
+        vector: queryVec,
+        coords2D: queryCoords,
+        text: query
+      };
+
+      // Calculate Cosine Similarity with every chunk
+      state.chunks.forEach(chunk => {
+        const sim = cosineSimilarity(queryVec, chunk.vector);
+        chunk.similarity = Math.max(0, sim);
+        chunk.matched = false;
+      });
+
+      // Sort by similarity descending
+      const sorted = [...state.chunks].sort((a, b) => b.similarity - a.similarity);
+
+      // Apply Top-K and Threshold
+      const topKLimit = parseInt(state.topK, 10);
+      const minThreshold = parseFloat(state.threshold);
+
+      state.retrievedChunks = [];
+      let matchCount = 0;
+
+      for (let i = 0; i < sorted.length; i++) {
+        if (matchCount < topKLimit && sorted[i].similarity >= minThreshold) {
+          sorted[i].matched = true;
+          state.retrievedChunks.push(sorted[i]);
+          matchCount++;
+        }
+      }
+
+      // Update UI components
+      document.getElementById('stat-topk-count').innerHTML = `Top-K Matches: <strong class="text-cyan-400">${state.retrievedChunks.length}</strong>`;
+      updateChunksUI();
+      updatePromptUI();
+      renderCanvas();
+    }
+
+    function updatePromptUI() {
+      const contextContainer = document.getElementById('prompt-context-container');
+      const userQSpan = document.getElementById('prompt-user-question');
+      const statTokens = document.getElementById('stat-tokens-count');
+
+      userQSpan.textContent = state.userQuery;
+
+      if (state.retrievedChunks.length === 0) {
+        contextContainer.innerHTML = `<em class="text-rose-400/80">No chunks satisfied cosine threshold (≥ ${(state.threshold * 100).toFixed(0)}%). Fallback without context.</em>`;
+        statTokens.innerHTML = `Prompt Tokens: <strong class="text-amber-400">~60</strong>`;
+        return;
+      }
+
+      let totalTokens = 65; // Base system instructions
+      contextContainer.innerHTML = state.retrievedChunks.map((chunk, idx) => {
+        totalTokens += chunk.tokens + 10;
+        return `
+          <div class="p-2 bg-surface-900 rounded-lg border border-slate-800">
+            <span class="text-cyan-400 font-semibold text-[10px] block mb-0.5">
+              [Source ${idx + 1} | Chunk #${chunk.numericId} (Score: ${(chunk.similarity * 100).toFixed(1)}%)]
+            </span>
+            <span class="text-slate-300">"${chunk.text}"</span>
+          </div>
+        `;
+      }).join('');
+
+      totalTokens += Math.round(state.userQuery.split(/\s+/).length * 1.33);
+      statTokens.innerHTML = `Prompt Tokens: <strong class="text-amber-400">~${totalTokens}</strong>`;
+    }
+
+    function synthesizeLLMResponse() {
+      const outputBox = document.getElementById('llm-output-box');
+      const meter = document.getElementById('grounding-meter');
+      const meterPct = document.getElementById('grounding-pct');
+      const citationContainer = document.getElementById('citation-tags');
+      citationContainer.innerHTML = '';
+
+      if (state.activeViewMode === 'without-rag') {
+        meter.style.width = '15%';
+        meter.className = 'h-full bg-rose-500 transition-all duration-500';
+        meterPct.textContent = '15%';
+        meterPct.className = 'font-mono text-rose-400 font-semibold';
+
+        outputBox.innerHTML = `
+          <div class="text-rose-300 font-medium mb-1.5 flex items-center gap-1.5 text-xs">
+            <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Vanilla LLM (Ungrounded - Prone to Hallucination)
+          </div>
+          <p class="text-slate-300 leading-relaxed text-xs">
+            Based on general corporate standards, internet stipends are typically around $50 per month, and vacation approval standardly takes roughly 3 to 5 business days. Please verify with your HR portal, as my internal training weights do not contain private company policy.
+          </p>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      // WITH RAG GROUNDING
+      if (state.retrievedChunks.length === 0) {
+        meter.style.width = '0%';
+        meterPct.textContent = '0%';
+        outputBox.innerHTML = `
+          <div class="text-amber-400 font-medium mb-1 text-xs">⚠️ Insufficient Grounded Context</div>
+          <p class="text-slate-400 text-xs">
+            I am unable to answer based on the provided corporate sources. The semantic similarity did not meet the cosine threshold.
+          </p>
+        `;
+        return;
+      }
+
+      // Generate grounded answer based on active preset
+      meter.style.width = '98%';
+      meter.className = 'h-full bg-emerald-500 transition-all duration-500';
+      meterPct.textContent = '98%';
+      meterPct.className = 'font-mono text-emerald-400 font-semibold';
+
+      let responseHtml = "";
+      const citations = state.retrievedChunks.map((c, i) => ({
+        label: `[Source ${i + 1}]`,
+        chunkId: c.id,
+        numId: c.numericId
+      }));
+
+      if (state.presetKey === 'hr') {
+        responseHtml = `
+          According to company policy, you are eligible to claim a monthly internet stipend of <strong>$75</strong> via Expensify using code <strong>NET-2026</strong> <span class="citation-pill bg-brand-500/20 text-brand-300 px-1.5 py-0.5 rounded cursor-pointer font-mono font-semibold border border-brand-500/30" data-chunk-id="${citations[0]?.chunkId}">${citations[0]?.label || '[Source 1]'}</span>. Furthermore, employees receive a one-time <strong>$600</strong> ergonomic budget for desk equipment, and mandatory core Slack hours are <strong>10:00 AM to 3:00 PM Eastern</strong>.
+        `;
+      } else if (state.presetKey === 'space') {
+        responseHtml = `
+          Observations demonstrate that Kepler-452b completes an orbit in <strong>385 Earth days</strong> inside its star's habitable zone <span class="citation-pill bg-brand-500/20 text-brand-300 px-1.5 py-0.5 rounded cursor-pointer font-mono font-semibold border border-brand-500/30" data-chunk-id="${citations[0]?.chunkId}">${citations[0]?.label || '[Source 1]'}</span>. Additionally, JWST's NIRSpec instrument detected spectral water vapor signatures in exoplanet WASP-96b's atmosphere.
+        `;
+      } else if (state.presetKey === 'medical') {
+        responseHtml = `
+          The standard target Glycated Hemoglobin (HbA1c) is <strong>below 7.0% (53 mmol/mol)</strong> for non-pregnant adults <span class="citation-pill bg-brand-500/20 text-brand-300 px-1.5 py-0.5 rounded cursor-pointer font-mono font-semibold border border-brand-500/30" data-chunk-id="${citations[0]?.chunkId}">${citations[0]?.label || '[Source 1]'}</span>. First-line pharmacologic intervention is Metformin, slowly titrated to 2,000 mg daily with meals.
+        `;
+      } else {
+        responseHtml = `
+          Synthesizing from retrieved vector context: "${state.retrievedChunks[0].text.slice(0, 120)}..." <span class="citation-pill bg-brand-500/20 text-brand-300 px-1.5 py-0.5 rounded cursor-pointer font-mono font-semibold border border-brand-500/30" data-chunk-id="${citations[0]?.chunkId}">${citations[0]?.label || '[Source 1]'}</span>.
+        `;
+      }
+
+      // Stream text effect
+      outputBox.innerHTML = `
+        <div class="text-emerald-400 font-medium mb-1.5 flex items-center gap-1.5 text-xs">
+          <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Grounded Enterprise Synthesis (Strictly Cited)
+        </div>
+        <div class="text-slate-200 leading-relaxed text-xs sm:text-sm" id="stream-target">
+          ${responseHtml}
+        </div>
+      `;
+
+      // Render citation tag buttons below
+      citationContainer.innerHTML = citations.map(cit => `
+        <button class="citation-pill text-[10px] font-mono px-2 py-0.5 rounded bg-surface-800 hover:bg-brand-600 hover:text-white border border-slate-700 text-slate-300 transition" data-chunk-id="${cit.chunkId}">
+          🔍 ${cit.label} (Chunk #${cit.numId})
+        </button>
+      `).join('');
+
+      // Add citation hover & click highlights
+      document.querySelectorAll('.citation-pill').forEach(pill => {
+        const cId = pill.getAttribute('data-chunk-id');
+        pill.addEventListener('mouseenter', () => {
+          const matchedCard = document.querySelector(`.chunk-card[data-chunk-id="${cId}"]`);
+          if (matchedCard) {
+            matchedCard.classList.add('ring-2', 'ring-cyan-400', 'bg-cyan-950/40');
+            matchedCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        });
+        pill.addEventListener('mouseleave', () => {
+          const matchedCard = document.querySelector(`.chunk-card[data-chunk-id="${cId}"]`);
+          if (matchedCard) {
+            matchedCard.classList.remove('ring-2', 'ring-cyan-400', 'bg-cyan-950/40');
+          }
+        });
+      });
+
+      lucide.createIcons();
+    }
+
+    function renderCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+
+      ctx.clearRect(0, 0, width, height);
+
+      // Draw subtle coordinate grid
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 1;
+      const step = 32;
+      for (let x = 0; x < width; x += step) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < height; y += step) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      // Draw center origin axes
+      ctx.strokeStyle = '#334155';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(width / 2, 0);
+      ctx.lineTo(width / 2, height);
+      ctx.moveTo(0, height / 2);
+      ctx.lineTo(width, height / 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Draw query vector & cosine angle arc if active
+      if (state.queryVector) {
+        const q = state.queryVector.coords2D;
+
+        // Radar beam sweep around query
+        state.radarAngle += 0.025;
+        const radarRadius = 140;
+        const grad = ctx.createRadialGradient(q.x, q.y, 5, q.x, q.y, radarRadius);
+        grad.addColorStop(0, 'rgba(6, 182, 212, 0.25)');
+        grad.addColorStop(1, 'rgba(6, 182, 212, 0)');
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, radarRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Connect Query Vector to Top-K Chunks with laser lines
+        state.retrievedChunks.forEach(chunk => {
+          ctx.beginPath();
+          ctx.strokeStyle = '#10b981';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([3, 3]);
+          ctx.moveTo(q.x, q.y);
+          ctx.lineTo(chunk.coords2D.x, chunk.coords2D.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Draw mid-line similarity label
+          const midX = (q.x + chunk.coords2D.x) / 2;
+          const midY = (q.y + chunk.coords2D.y) / 2;
+          ctx.fillStyle = '#10b981';
+          ctx.font = '9px monospace';
+          ctx.fillText(`${(chunk.similarity * 100).toFixed(0)}%`, midX + 4, midY - 4);
+        });
+
+        // Query Node (Rose Pulsing)
+        ctx.save();
+        ctx.shadowColor = '#f43f5e';
+        ctx.shadowBlur = 15;
+        ctx.fillStyle = '#f43f5e';
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // Query Inner Core
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#f43f5e';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillText('Query Vector', q.x + 12, q.y + 4);
+      }
+
+      // Draw Document Chunk Nodes
+      state.chunks.forEach(chunk => {
+        const { x, y } = chunk.coords2D;
+        const isMatched = chunk.matched;
+
+        // Node Glow and Circle
+        ctx.save();
+        if (isMatched) {
+          ctx.shadowColor = '#10b981';
+          ctx.shadowBlur = 18;
+          ctx.fillStyle = '#10b981';
+        } else {
+          ctx.shadowColor = '#6366f1';
+          ctx.shadowBlur = 8;
+          ctx.fillStyle = '#6366f1';
+        }
+
+        ctx.beginPath();
+        ctx.arc(x, y, isMatched ? 7 : 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // White nucleus
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(x, y, isMatched ? 3 : 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Node Label
+        ctx.fillStyle = isMatched ? '#34d399' : '#94a3b8';
+        ctx.font = '10px monospace';
+        ctx.fillText(`C#${chunk.numericId}`, x + 9, y + 3);
+      });
+    }
+
+    function animateLoop() {
+      if (state.queryVector) {
+        renderCanvas();
+      }
+      state.animationFrameId = requestAnimationFrame(animateLoop);
+    }
+
+    function highlightCanvasNode(chunk) {
+      const tooltip = document.getElementById('vector-tooltip');
+      const rect = canvas.getBoundingClientRect();
+
+      tooltip.innerHTML = `
+        <div class="font-bold text-white text-xs mb-1">Chunk #${chunk.numericId} Vector</div>
+        <div class="font-mono text-[10px] text-cyan-300 mb-1">[${chunk.vector.join(', ')}]</div>
+        <div class="text-[11px] text-slate-300 italic line-clamp-2">"${chunk.text}"</div>
+      `;
+      tooltip.style.left = `${Math.min(rect.width - 220, chunk.coords2D.x + 10)}px`;
+      tooltip.style.top = `${Math.max(10, chunk.coords2D.y - 40)}px`;
+      tooltip.classList.remove('hidden');
+
+      setTimeout(() => {
+        tooltip.classList.add('hidden');
+      }, 4500);
+    }
+
+    function setStep(stepNum) {
+      state.currentStep = stepNum;
+      const stepBtns = document.querySelectorAll('.step-btn');
+      const statusLabel = document.getElementById('status-label');
+
+      stepBtns.forEach(btn => {
+        const s = parseInt(btn.getAttribute('data-step'), 10);
+        const dot = btn.querySelector('.step-dot');
+        if (s === stepNum) {
+          btn.className = 'step-btn group text-left p-3 rounded-xl border transition-all duration-200 relative overflow-hidden bg-brand-500/15 border-brand-500 shadow-md shadow-brand-500/10';
+          dot.className = 'w-2 h-2 rounded-full bg-brand-400 step-active-pulse';
+        } else if (s < stepNum) {
+          btn.className = 'step-btn group text-left p-3 rounded-xl border border-slate-700/80 bg-surface-850/80 text-slate-300';
+          dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        } else {
+          btn.className = 'step-btn group text-left p-3 rounded-xl border border-slate-800 bg-surface-850/40 text-slate-400';
+          dot.className = 'w-2 h-2 rounded-full bg-slate-600';
+        }
+      });
+
+      const stepTitles = [
+        "Ingestion & Chunking: Parsing raw corpus into discrete tokens",
+        "Vector Embeddings: Dense float vectors indexed into hyperspace",
+        "Semantic Search: Cosine angle calculation & Top-K ranking",
+        "Prompt Augmentation: Injecting retrieved context into system prompt",
+        "LLM Synthesis: Outputting fact-grounded response with citations"
+      ];
+      statusLabel.textContent = `Step ${stepNum}: ${stepTitles[stepNum - 1]}`;
+
+      // Trigger respective actions
+      if (stepNum === 1) performChunking();
+      if (stepNum === 2) {
+        showToast("High-dimensional embeddings indexed in Vector Space!");
+        renderCanvas();
+      }
+      if (stepNum === 3) performRetrieval();
+      if (stepNum === 4) updatePromptUI();
+      if (stepNum === 5) synthesizeLLMResponse();
+    }
+
+    function loadPreset(key) {
+      state.presetKey = key;
+      const p = PRESETS[key];
+      const docInput = document.getElementById('raw-document-input');
+      const queryInput = document.getElementById('user-query-input');
+      const chips = document.getElementById('query-chips');
+
+      docInput.value = p.text;
+      state.rawText = p.text;
+
+      if (p.queries && p.queries.length > 0) {
+        queryInput.value = p.queries[0];
+        state.userQuery = p.queries[0];
+        
+        chips.innerHTML = p.queries.map(q => `
+          <button class="query-chip-btn text-[11px] bg-surface-850 hover:bg-surface-800 text-slate-300 hover:text-white px-2.5 py-1 rounded-lg border border-slate-800 transition truncate max-w-xs">
+            ${q}
+          </button>
+        `).join('');
+
+        chips.querySelectorAll('.query-chip-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            queryInput.value = e.target.textContent.trim();
+            state.userQuery = queryInput.value;
+            performRetrieval();
+            synthesizeLLMResponse();
+          });
+        });
+      }
+
+      performChunking();
+      showToast(`Loaded "${p.title}" preset.`);
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toast-msg');
+      toastMsg.textContent = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+        toast.classList.remove('translate-y-0', 'opacity-100');
+      }, 3200);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+
+      // Sliders & Controls
+      const chunkSizeSlider = document.getElementById('chunk-size-slider');
+      const chunkSizeVal = document.getElementById('chunk-size-val');
+      chunkSizeSlider.addEventListener('input', (e) => {
+        state.chunkSize = e.target.value;
+        chunkSizeVal.textContent = `${state.chunkSize} words`;
+        performChunking();
+      });
+
+      const overlapSlider = document.getElementById('overlap-slider');
+      const overlapVal = document.getElementById('overlap-val');
+      overlapSlider.addEventListener('input', (e) => {
+        state.overlap = e.target.value;
+        overlapVal.textContent = `${state.overlap} words`;
+        performChunking();
+      });
+
+      document.getElementById('chunk-strategy').addEventListener('change', (e) => {
+        state.strategy = e.target.value;
+        performChunking();
+      });
+
+      const topKSlider = document.getElementById('top-k-slider');
+      const topKLabel = document.getElementById('top-k-label');
+      topKSlider.addEventListener('input', (e) => {
+        state.topK = e.target.value;
+        topKLabel.textContent = `K = ${state.topK}`;
+        performRetrieval();
+        if (state.currentStep >= 4) updatePromptUI();
+        if (state.currentStep >= 5) synthesizeLLMResponse();
+      });
+
+      const thresholdSlider = document.getElementById('threshold-slider');
+      const thresholdLabel = document.getElementById('threshold-label');
+      thresholdSlider.addEventListener('input', (e) => {
+        state.threshold = parseFloat(e.target.value);
+        thresholdLabel.textContent = `≥ ${state.threshold.toFixed(2)}`;
+        performRetrieval();
+        if (state.currentStep >= 4) updatePromptUI();
+        if (state.currentStep >= 5) synthesizeLLMResponse();
+      });
+
+      document.getElementById('preset-selector').addEventListener('change', (e) => {
+        loadPreset(e.target.value);
+      });
+
+      document.getElementById('raw-document-input').addEventListener('input', (e) => {
+        state.rawText = e.target.value;
+        performChunking();
+      });
+
+      document.getElementById('btn-submit-query').addEventListener('click', () => {
+        state.userQuery = document.getElementById('user-query-input').value;
+        setStep(3);
+        performRetrieval();
+        setStep(4);
+        setStep(5);
+      });
+
+      document.getElementById('user-query-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          state.userQuery = e.target.value;
+          setStep(3);
+          performRetrieval();
+          setStep(4);
+          setStep(5);
+        }
+      });
+
+      // Pipeline Run Buttons
+      document.getElementById('btn-run-all').addEventListener('click', () => {
+        let step = 1;
+        const interval = setInterval(() => {
+          setStep(step);
+          step++;
+          if (step > 5) clearInterval(interval);
+        }, 500);
+      });
+
+      document.getElementById('btn-step-next').addEventListener('click', () => {
+        const next = state.currentStep < 5 ? state.currentStep + 1 : 1;
+        setStep(next);
+      });
+
+      document.getElementById('btn-reset').addEventListener('click', () => {
+        loadPreset('hr');
+        setStep(1);
+        showToast("Pipeline reset to Step 1.");
+      });
+
+      // Stepper headers
+      document.querySelectorAll('.step-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const s = parseInt(btn.getAttribute('data-step'), 10);
+          setStep(s);
+        });
+      });
+
+      // With vs Without RAG Toggle
+      const tabWithRag = document.getElementById('tab-with-rag');
+      const tabWithoutRag = document.getElementById('tab-without-rag');
+
+      tabWithRag.addEventListener('click', () => {
+        state.activeViewMode = 'with-rag';
+        tabWithRag.className = 'px-2.5 py-1 rounded-md bg-emerald-600 text-white font-medium transition';
+        tabWithoutRag.className = 'px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition';
+        synthesizeLLMResponse();
+      });
+
+      tabWithoutRag.addEventListener('click', () => {
+        state.activeViewMode = 'without-rag';
+        tabWithoutRag.className = 'px-2.5 py-1 rounded-md bg-rose-600 text-white font-medium transition';
+        tabWithRag.className = 'px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition';
+        synthesizeLLMResponse();
+      });
+
+      // Copy Prompt Button
+      document.getElementById('btn-copy-prompt').addEventListener('click', () => {
+        const contextText = state.retrievedChunks.map(c => c.text).join('\n---\n');
+        const fullPrompt = `System: Answer truthfully using only this context:\n${contextText}\n\nQuestion: ${state.userQuery}`;
+        
+        const temp = document.createElement('textarea');
+        temp.value = fullPrompt;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
+        showToast("Prompt copied to clipboard!");
+      });
+
+      // Toggle Reference Guide Collapsible
+      const btnToggleGuide = document.getElementById('btn-toggle-guide');
+      const guideContent = document.getElementById('guide-content');
+      const guideChevron = document.getElementById('guide-chevron');
+
+      btnToggleGuide.addEventListener('click', () => {
+        const isHidden = guideContent.classList.contains('hidden');
+        if (isHidden) {
+          guideContent.classList.remove('hidden');
+          guideChevron.style.transform = 'rotate(180deg)';
+        } else {
+          guideContent.classList.add('hidden');
+          guideChevron.style.transform = 'rotate(0deg)';
+        }
+      });
+
+      // Initial Canvas & Preset Load
+      resizeCanvas();
+      loadPreset('hr');
+      setStep(1);
+      animateLoop();
+    });
+  </script>
+</body>
+</html>
